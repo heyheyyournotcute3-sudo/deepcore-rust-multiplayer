@@ -1,20 +1,34 @@
 //! Deepcore client: windowed Bevy app that renders the mine and talks to the server.
 
+use std::path::PathBuf;
+
 use anyhow::Result;
+// Bevy 0.20 also provides a `Context` extension trait on Result, so call the anyhow one
+// explicitly to avoid an ambiguous method call.
+use anyhow::Context as AnyhowContext;
 use bevy::{
-    core_pipeline::tonemapping::Tonemapping,
+    app::AppExit,
     prelude::*,
+    render::view::screenshot::{Screenshot, save_to_disk},
     window::{PresentMode, WindowResolution},
 };
 use clap::Parser;
-use deepcore_shared::SharedPlugin;
+use deepcore_shared::{SharedPlugin, content::ContentRegistry, worldgen::WorldGen};
 use tracing::info;
+
+mod audio;
+mod hud;
+mod input;
+mod net;
+mod prediction;
+mod render;
+mod ui;
 
 /// Command-line options for the client.
 #[derive(Parser, Debug, Clone, Resource)]
 #[command(name = "client", about = "Deepcore game client")]
 pub struct ClientArgs {
-    /// Join a server at this address instead of showing the menu.
+    /// Join a server at this address instead of playing the local world.
     #[arg(long)]
     pub connect: Option<String>,
     /// Server port used with `--connect`.
@@ -23,6 +37,9 @@ pub struct ClientArgs {
     /// Display name shown to teammates.
     #[arg(long, default_value = "Miner")]
     pub name: String,
+    /// World seed for the local world.
+    #[arg(long, default_value_t = 1337)]
+    pub seed: u64,
     /// Artificial one-way latency to simulate, in milliseconds.
     #[arg(long, default_value_t = 0)]
     pub simulate_latency: u32,
@@ -32,13 +49,51 @@ pub struct ClientArgs {
     /// Render this many frames and then exit (used by automated smoke tests).
     #[arg(long)]
     pub exit_after_frames: Option<u32>,
+    /// Horizontal chunk view radius, in chunks.
+    #[arg(long, default_value_t = 6)]
+    pub view_radius: i32,
+    /// Save a screenshot to this path just before exiting.
+    #[arg(long)]
+    pub screenshot: Option<PathBuf>,
 }
 
 fn main() -> Result<()> {
     let args = ClientArgs::parse();
 
+    // Load and validate content before the app starts, so a broken content file fails loudly
+    // instead of producing an empty world.
+    let content_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../assets/data");
+    let registry =
+        AnyhowContext::with_context(ContentRegistry::load_from_dir(&content_dir), || {
+            format!("loading content from {}", content_dir.display())
+        })?;
+    info!(
+        blocks = registry.blocks.len(),
+        items = registry.items.len(),
+        machines = registry.machines.len(),
+        recipes = registry.recipes.len(),
+        hash = registry.content_hash(),
+        "content loaded"
+    );
+
+    // Sanity-check that the world can be generated with this content and seed.
+    AnyhowContext::context(
+        WorldGen::new(&registry, args.seed),
+        "building the world generator",
+    )?;
+
     App::new()
         .insert_resource(args.clone())
+        .insert_resource(registry)
+        .insert_resource(net::ServerConfigRes {
+            address: args.connect.clone().unwrap_or_else(|| "127.0.0.1".into()),
+            port: args.port,
+            seed: args.seed,
+            name: args.name.clone(),
+            simulate_latency: args.simulate_latency,
+            simulate_loss: args.simulate_loss,
+            hosting: args.connect.is_none(),
+        })
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "Deepcore".into(),
@@ -49,77 +104,57 @@ fn main() -> Result<()> {
             ..default()
         }))
         .add_plugins(SharedPlugin)
-        .add_systems(Startup, setup_scene)
-        .add_systems(Update, (spin_cube, exit_after_frames))
+        .add_plugins((
+            render::RenderPlugin,
+            input::InputPlugin,
+            hud::HudPlugin,
+            ui::UiPlugin,
+            prediction::PredictionPlugin,
+            audio::AudioPlugin,
+            net::NetPlugin,
+        ))
+        .add_systems(Update, drive_lifecycle)
         .run();
 
     Ok(())
 }
 
-/// Marker for the placeholder test cube shown at startup.
-#[derive(Component)]
-struct SpinCube;
-
-fn setup_scene(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
-) {
-    // Ground plane so the cube has something to sit on.
-    commands.spawn((
-        Mesh3d(meshes.add(Plane3d::default().mesh().size(16.0, 16.0))),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.22, 0.24, 0.20),
-            perceptual_roughness: 1.0,
-            ..default()
-        })),
-    ));
-
-    commands.spawn((
-        SpinCube,
-        Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.55, 0.50, 0.48),
-            perceptual_roughness: 0.8,
-            ..default()
-        })),
-        Transform::from_xyz(0.0, 0.5, 0.0),
-    ));
-
-    commands.spawn((
-        DirectionalLight {
-            illuminance: light_consts::lux::OVERCAST_DAY,
-            shadow_maps_enabled: true,
-            ..default()
-        },
-        Transform::from_xyz(4.0, 8.0, 4.0).looking_at(Vec3::ZERO, Vec3::Y),
-    ));
-
-    commands.spawn((
-        Camera3d::default(),
-        Tonemapping::AcesFitted,
-        Transform::from_xyz(-3.5, 2.5, 6.0).looking_at(Vec3::new(0.0, 0.5, 0.0), Vec3::Y),
-    ));
-
-    info!("client started; M0 skeleton scene loaded");
-}
-
-fn spin_cube(time: Res<Time>, mut cubes: Query<&mut Transform, With<SpinCube>>) {
-    for mut transform in &mut cubes {
-        transform.rotate_y(time.delta_secs() * 0.8);
-    }
-}
-
-fn exit_after_frames(
+/// Handles `--exit-after-frames` and `--screenshot` for automated smoke tests.
+fn drive_lifecycle(
     args: Res<ClientArgs>,
     mut frames: Local<u32>,
     mut exit: MessageWriter<AppExit>,
+    mut commands: Commands,
+    mut captured: Local<bool>,
+    stats: Res<crate::render::chunks::ChunkStats>,
 ) {
+    *frames += 1;
     let Some(limit) = args.exit_after_frames else {
         return;
     };
-    *frames += 1;
-    if *frames >= limit {
+    // Wait for the async mesher to settle before capturing, otherwise the screenshot shows an
+    // empty world even though the game itself is fine a moment later.
+    let meshed = stats.loaded > 0 && stats.pending == 0;
+    if !*captured
+        && meshed
+        && *frames > 5
+        && let Some(path) = &args.screenshot
+    {
+        *captured = true;
+        commands
+            .spawn(Screenshot::primary_window())
+            .observe(save_to_disk(path.clone()));
+        info!(
+            frame = *frames,
+            chunks = stats.loaded,
+            "captured screenshot to {}",
+            path.display()
+        );
+    }
+    // Never exit while a screenshot is still pending: the capture needs a couple more frames
+    // to read back from the GPU and write the file.
+    let capture_settled = args.screenshot.is_none() || (*captured && *frames > limit + 20);
+    if *frames >= limit && capture_settled {
         info!(
             frames = *frames,
             "reached --exit-after-frames limit, shutting down"

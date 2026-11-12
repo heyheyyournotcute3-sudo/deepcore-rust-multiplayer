@@ -29,6 +29,9 @@ pub enum SurfaceFeature {
 }
 
 /// The generator for one world seed.
+///
+/// Cheap to share: clone the `Arc` rather than the noise tables.
+#[derive(Clone)]
 pub struct WorldGen {
     seed: u64,
     cave_noise: Value,

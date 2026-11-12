@@ -5,9 +5,15 @@
 //! protocol types. It contains no rendering and no socket code, so the same code runs on the
 //! authoritative server and inside the client.
 
+pub mod atlas;
 pub mod content;
+pub mod crafting;
+pub mod hazards;
+pub mod inventory;
 pub mod mining;
 pub mod movement;
+pub mod power;
+pub mod protocol;
 pub mod voxel;
 pub mod worldgen;
 

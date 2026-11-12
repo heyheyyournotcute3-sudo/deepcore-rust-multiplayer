@@ -61,6 +61,8 @@ pub struct MeshData {
     pub indices: Vec<u32>,
     /// Number of quads merged into this mesh, for diagnostics.
     pub quads: usize,
+    /// The block ID of each quad, in the same order the vertices were appended.
+    pub quad_blocks: Vec<BlockId>,
 }
 
 impl MeshData {
@@ -73,6 +75,7 @@ impl MeshData {
             &mut self.colors,
             &mut self.indices,
         );
+        self.quad_blocks.push(quad.block);
         self.quads += 1;
     }
 
@@ -92,6 +95,20 @@ const SHADE: [f32; 6] = [0.78, 0.72, 1.0, 0.45, 0.62, 0.58];
 /// coordinate in `-1..=CHUNK_SIZE` so the mesher can cull faces against neighbouring chunks.
 /// `solid` decides which blocks occlude faces; non-solid blocks (air, water, gas) are not meshed.
 pub fn greedy_mesh<F, S>(get: F, solid: S) -> MeshData
+where
+    F: Fn(i32, i32, i32) -> BlockId,
+    S: Fn(BlockId) -> bool,
+{
+    greedy_mesh_with(get, solid, true)
+}
+
+/// Meshes a chunk, optionally merging faces into larger quads.
+///
+/// Merging produces far fewer triangles, but a merged quad spans several blocks, and a texture
+/// atlas cannot repeat inside one quad. Pass `merge = false` when the renderer samples an atlas
+/// (each face then gets its own 0..1 UV rectangle), and `merge = true` when it uses per-block
+/// materials with repeat wrapping.
+pub fn greedy_mesh_with<F, S>(get: F, solid: S, merge: bool) -> MeshData
 where
     F: Fn(i32, i32, i32) -> BlockId,
     S: Fn(BlockId) -> bool,
@@ -146,20 +163,24 @@ where
 
                     // Grow width along u.
                     let mut w = 1i32;
-                    while i + w < size && mask[n + w as usize] == current {
-                        w += 1;
+                    if merge {
+                        while i + w < size && mask[n + w as usize] == current {
+                            w += 1;
+                        }
                     }
 
                     // Grow height along v.
                     let mut h = 1i32;
-                    'grow: while j + h < size {
-                        for k in 0..w {
-                            let idx = n + k as usize + (h as usize) * size as usize;
-                            if mask[idx] != current {
-                                break 'grow;
+                    if merge {
+                        'grow: while j + h < size {
+                            for k in 0..w {
+                                let idx = n + k as usize + (h as usize) * size as usize;
+                                if mask[idx] != current {
+                                    break 'grow;
+                                }
                             }
+                            h += 1;
                         }
-                        h += 1;
                     }
 
                     // Emit the merged quad.
