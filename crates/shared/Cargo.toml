@@ -1,0 +1,21 @@
+[package]
+name = "deepcore-shared"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+bevy = { workspace = true }
+serde = { workspace = true }
+ron = { workspace = true }
+postcard = { workspace = true }
+noise = { workspace = true }
+rand_chacha = { workspace = true }
+rand_core = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+sha2 = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }

@@ -1,0 +1,8 @@
+/target
+**/*.rs.bk
+*.pdb
+/saves
+*.sqlite
+*.sqlite-*
+.DS_Store
+/assets/textures/atlas.png
