@@ -5,6 +5,12 @@
 //! protocol types. It contains no rendering and no socket code, so the same code runs on the
 //! authoritative server and inside the client.
 
+pub mod content;
+pub mod mining;
+pub mod movement;
+pub mod voxel;
+pub mod worldgen;
+
 use bevy::prelude::*;
 
 /// Tick rate of the authoritative simulation, in Hz.

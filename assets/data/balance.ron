@@ -1,0 +1,42 @@
+// Deepcore global tunables. Every balance number lives here so pacing can be retuned
+// without touching Rust code.
+
+(
+    // ---------------------------------------------------------------- fuel and processing
+    coal_burn_seconds: 80.0,
+    crushed_yield: 1.5,
+    washed_yield: 2.0,
+
+    // ---------------------------------------------------------------- player movement
+    walk_speed: 4.3,
+    sprint_multiplier: 1.6,
+    crouch_multiplier: 0.45,
+    jump_speed: 8.4,
+    gravity: 24.0,
+    player_half_width: 0.3,
+    player_height: 1.8,
+    reach: 5.0,
+
+    // ---------------------------------------------------------------- vitals
+    max_health: 100.0,
+    max_stamina: 100.0,
+    stamina_sprint_drain: 8.0,
+    stamina_regen: 14.0,
+    max_oxygen: 45.0,
+    oxygen_drain: 6.0,
+
+    // ---------------------------------------------------------------- hazards
+    dose_grain: 100.0,
+    dose_no_regen: 300.0,
+    dose_damage: 600.0,
+    dose_damage_rate: 2.0,
+    heat_limit: 45.0,
+    heat_damage_rate: 3.0,
+
+    // ---------------------------------------------------------------- reactor
+    reactor_kw: 20000.0,
+    reactor_warn_temp: 800.0,
+    reactor_limit_temp: 1000.0,
+    meltdown_zone_minutes: 20.0,
+    core_cell_breaks: 2000,
+)
