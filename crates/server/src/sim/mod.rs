@@ -77,6 +77,7 @@ fn spawn_player_on_request(
     mut world: ResMut<ServerWorld>,
     registry: Res<ContentRegistry>,
     admitted: Res<crate::net::HandshakeState>,
+    db: Option<Res<crate::persist::SaveDb>>,
 ) {
     let client = request.client;
     let name = admitted
@@ -95,9 +96,25 @@ fn spawn_player_on_request(
         inventory.set_slot(0, deepcore_shared::inventory::ItemStack::new(pickaxe, 1));
     }
 
+    // If this player has been here before, restore their position, health and inventory.
+    let mut restored = None;
+    if let Some(db) = db.as_ref()
+        && let Some(record) = crate::persist::restore_player(db, &name)
+    {
+        for (index, stack) in record.inventory.iter().enumerate() {
+            inventory.set_slot(index, *stack);
+        }
+        body.position = record.position;
+        body.yaw = record.yaw;
+        body.pitch = record.pitch;
+        restored = Some(record);
+    }
+
     let balance = &registry.balance;
+    let health = restored.as_ref().map_or(balance.max_health, |r| r.health);
+    let dose = restored.as_ref().map_or(0.0, |r| r.dose);
     let vitals = NetVitals {
-        health: balance.max_health,
+        health,
         stamina: balance.max_stamina,
         oxygen: balance.max_oxygen,
         heat: 0.0,
@@ -116,7 +133,7 @@ fn spawn_player_on_request(
                 selected: 0,
                 vitals,
                 hazards: HazardState {
-                    dose: 0.0,
+                    dose,
                     heat: 0.0,
                     oxygen: balance.max_oxygen,
                 },
@@ -134,7 +151,7 @@ fn spawn_player_on_request(
             }),
             ReplicatedPlayerInfo(NetPlayerInfo {
                 name,
-                health: balance.max_health,
+                health,
                 sprinting: false,
                 crouching: false,
                 held_item: None,

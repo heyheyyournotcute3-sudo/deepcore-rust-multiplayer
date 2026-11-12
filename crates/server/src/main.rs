@@ -13,6 +13,7 @@ use deepcore_shared::{SERVER_TICK_HZ, SharedPlugin, content::ContentRegistry};
 
 mod machines;
 mod net;
+mod persist;
 mod research;
 mod sim;
 mod world;
@@ -40,6 +41,9 @@ pub struct ServerArgs {
     /// Exit after this many seconds (used by automated smoke tests).
     #[arg(long)]
     pub exit_after: Option<f32>,
+    /// Directory for the save files.
+    #[arg(long, default_value = "saves")]
+    pub save_dir: String,
 }
 
 /// Tracks how long the last simulation tick took, so the server can report its health.
@@ -90,7 +94,9 @@ fn main() -> Result<()> {
             sim::SimPlugin,
             research::ResearchPlugin,
             machines::MachinePlugin,
+            persist::PersistencePlugin,
         ))
+        .insert_resource(persist::SavePaths::new(&args.save_dir))
         .init_resource::<TickStats>()
         .add_systems(Startup, setup)
         .add_systems(FixedUpdate, count_tick)
@@ -138,12 +144,18 @@ fn exit_if_requested(
     time: Res<Time>,
     mut elapsed: Local<f32>,
     mut exit: MessageWriter<AppExit>,
+    world: Option<Res<world::ServerWorld>>,
+    paths: Option<Res<persist::SavePaths>>,
 ) {
-    if let Some(limit) = args.exit_after {
-        *elapsed += time.delta_secs();
-        if *elapsed >= limit {
-            info!("reached --exit-after limit, shutting down");
-            exit.write(AppExit::Success);
+    let Some(limit) = args.exit_after else {
+        return;
+    };
+    *elapsed += time.delta_secs();
+    if *elapsed >= limit {
+        info!("reached --exit-after limit, shutting down");
+        if let (Some(world), Some(paths)) = (world, paths) {
+            persist::save_on_shutdown(&world, &paths);
         }
+        exit.write(AppExit::Success);
     }
 }

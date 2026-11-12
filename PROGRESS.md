@@ -4,8 +4,9 @@ Continuation notes. Read this file, then `docs/PLAN.md`.
 
 ## Current state
 
-**M0–M4 complete. Era progression (including the full nuclear chain) is proven by headless
-integration tests. Persistence, bots, latency simulation, lobby and polish are next.**
+**M0–M4 and M9 persistence complete. Era progression (including the full nuclear chain) is
+proven by headless integration tests. Bots, latency injection, the lobby and final polish
+remain.**
 
 ### Working and verified
 
@@ -50,11 +51,10 @@ integration tests. Persistence, bots, latency simulation, lobby and polish are n
 
 ### Next up
 
-1. **M9 persistence**: region files for modified chunks + SQLite for players/machines/tech,
-   autosave, crash-safe writes.
-2. **Bot clients** (`--bots`) and latency/loss injection for the M2 acceptance test.
-3. Item pickups in the world + death crate + respawn.
-4. **M10 lobby**: axum + sqlx accounts, tokens, server browser, Dockerfiles.
+1. **Bot clients** (`--bots`) and latency/loss injection for the M2 acceptance test.
+2. Item pickups in the world + death crate + respawn.
+3. **M10 lobby**: axum + sqlx accounts, tokens, server browser, Dockerfiles.
+4. Audio (dig/place/machine hum/Geiger), particles, settings menu, objective list.
 
 ## Environment facts (verified, not assumed)
 
@@ -105,6 +105,8 @@ Note: software rendering runs at ~3 FPS, so keep `--view-radius` small for smoke
 - Machines tick and replicate, but the client does not draw machine models yet.
 - Machine contents are sent on interact, but the client does not yet open the panel on
   right-click of a machine block.
+- Persistence saves modified chunks, players, machines and research, and restores all of them;
+  only *modified* chunks are written (unmodified chunks regenerate from the seed by design).
 - `--simulate-latency` / `--simulate-loss` / `--bots` are parsed but not yet wired to renet.
 - Block textures use a per-face (non-merged) mesh because an atlas cannot tile inside a merged
   quad. `greedy_mesh_with(.., merge = true)` is available for per-block materials later.

@@ -64,6 +64,29 @@ impl ServerWorld {
         self.chunks.get_mut(&pos).expect("chunk was just inserted")
     }
 
+    /// Returns every chunk that has unsaved edits, as `(position, chunk)` pairs.
+    #[must_use]
+    pub fn modified_chunk_list(&self) -> Vec<(ChunkPos, Chunk)> {
+        self.modified
+            .iter()
+            .filter_map(|pos| self.chunks.get(pos).map(|chunk| (*pos, chunk.clone())))
+            .collect()
+    }
+
+    /// Inserts a chunk loaded from a save file, marking it as modified so it is re-saved.
+    pub fn insert_loaded_chunk(&mut self, pos: ChunkPos, mut chunk: Chunk) {
+        chunk.mark_dirty();
+        self.chunks.insert(pos, chunk);
+        self.modified.insert(pos);
+    }
+
+    /// Clears the dirty flags after a successful save.
+    pub fn mark_all_saved(&mut self) {
+        for chunk in self.chunks.values_mut() {
+            chunk.mark_clean();
+        }
+    }
+
     /// Reads a block without generating the chunk, returning air when it is not loaded.
     #[must_use]
     pub fn peek(&self, pos: BlockPos) -> deepcore_shared::content::BlockId {
@@ -127,12 +150,16 @@ pub fn decode_chunk(payload: &[u8]) -> Option<Chunk> {
     postcard::from_bytes(&raw).ok()
 }
 
+/// Startup system set ordering: the world must exist before persistence loads into it.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct WorldInit;
+
 /// Server world plugin.
 pub struct WorldPlugin;
 
 impl Plugin for WorldPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, init_world)
+        app.add_systems(Startup, init_world.in_set(WorldInit))
             .add_systems(FixedUpdate, stream_chunks_to_clients);
     }
 }
