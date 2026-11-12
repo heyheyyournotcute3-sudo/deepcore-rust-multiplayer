@@ -482,7 +482,7 @@ fn push_inventory_updates(
     }
 }
 
-/// Places a block from the player's inventory, after validation.
+/// Places a block or a machine from the player's inventory, after validation.
 pub fn handle_place(
     mut events: Option<MessageReader<FromClient<PlaceBlockMsg>>>,
     mut players: Query<&mut ServerPlayer>,
@@ -490,6 +490,7 @@ pub fn handle_place(
     registry: Res<ContentRegistry>,
     mut commands: Commands,
     clients: Query<Entity, With<ConnectedClient>>,
+    mut machine_index: ResMut<crate::machines::MachineIndex>,
 ) {
     let Some(events) = events.as_mut() else {
         return;
@@ -499,10 +500,10 @@ pub fn handle_place(
         message: event,
     } in events.read()
     {
-        let Some(entity) = client_id.entity() else {
+        let Some(client) = client_id.entity() else {
             continue;
         };
-        let Ok(mut player) = players.get_mut(entity) else {
+        let Ok(mut player) = players.get_mut(client) else {
             continue;
         };
         let pos: BlockPos = event.pos.into();
@@ -511,7 +512,7 @@ pub fn handle_place(
             warn!(?pos, "place intent out of reach");
             continue;
         }
-        // The slot must actually hold a placeable block.
+        // The slot must actually hold a placeable item.
         let Some(stack) = player.inventory.slot(usize::from(event.item_slot)).copied() else {
             continue;
         };
@@ -519,18 +520,37 @@ pub fn handle_place(
         let Some(item_def) = registry.item_def(item) else {
             continue;
         };
-        let ItemCategory::Block(block_name) = &item_def.category else {
-            continue;
-        };
-        let Some(block) = registry.block(block_name) else {
-            continue;
-        };
-        // The target must be empty.
-        if world.block(pos) != AIR {
-            continue;
+
+        match item_def.category.clone() {
+            ItemCategory::Machine(machine_name) => {
+                // Machines occupy a footprint; `place_machine` validates every cell.
+                let placed = crate::machines::place_machine(
+                    &mut commands,
+                    &mut world,
+                    &mut machine_index,
+                    &registry,
+                    &clients,
+                    &machine_name,
+                    pos,
+                    Some(client),
+                );
+                if placed.is_some() {
+                    player.inventory.remove(item, 1);
+                }
+            }
+            ItemCategory::Block(block_name) => {
+                let Some(block) = registry.block(&block_name) else {
+                    continue;
+                };
+                // The target must be empty.
+                if world.block(pos) != AIR {
+                    continue;
+                }
+                apply_and_broadcast_block(&mut commands, &mut world, pos, block, &clients);
+                player.inventory.remove(item, 1);
+            }
+            _ => {}
         }
-        apply_and_broadcast_block(&mut commands, &mut world, pos, block, &clients);
-        player.inventory.remove(item, 1);
     }
 }
 

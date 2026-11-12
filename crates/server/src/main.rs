@@ -11,7 +11,9 @@ use bevy::{
 use clap::Parser;
 use deepcore_shared::{SERVER_TICK_HZ, SharedPlugin, content::ContentRegistry};
 
+mod machines;
 mod net;
+mod research;
 mod sim;
 mod world;
 use tracing::info;
@@ -82,7 +84,13 @@ fn main() -> Result<()> {
         .add_plugins(bevy::log::LogPlugin::default())
         .add_plugins(SharedPlugin)
         .add_plugins(bevy::state::app::StatesPlugin)
-        .add_plugins((net::NetPlugin, world::WorldPlugin, sim::SimPlugin))
+        .add_plugins((
+            net::NetPlugin,
+            world::WorldPlugin,
+            sim::SimPlugin,
+            research::ResearchPlugin,
+            machines::MachinePlugin,
+        ))
         .init_resource::<TickStats>()
         .add_systems(Startup, setup)
         .add_systems(FixedUpdate, count_tick)
