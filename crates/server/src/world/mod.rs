@@ -87,6 +87,12 @@ impl ServerWorld {
         }
     }
 
+    /// Number of loaded chunks, for the load report.
+    #[must_use]
+    pub fn loaded_chunks_for_report(&self) -> usize {
+        self.chunks.len()
+    }
+
     /// Reads a block without generating the chunk, returning air when it is not loaded.
     #[must_use]
     pub fn peek(&self, pos: BlockPos) -> deepcore_shared::content::BlockId {
@@ -262,6 +268,15 @@ fn stream_chunks_to_clients(
         modified = world.modified_chunks(),
         "chunk cache after streaming"
     );
+}
+
+/// Writes a block without broadcasting, for simulated players whose changes are not networked.
+pub fn set_block_direct(
+    world: &mut ServerWorld,
+    pos: BlockPos,
+    block: deepcore_shared::content::BlockId,
+) {
+    world.set_block(pos, block);
 }
 
 /// Applies a block change and broadcasts it to every client that has the chunk loaded.

@@ -51,7 +51,8 @@ remain.**
 
 ### Next up
 
-1. **Bot clients** (`--bots`) and latency/loss injection for the M2 acceptance test.
+1. **Latency/loss injection** for the M2 acceptance test (flags are parsed; injection is not
+   wired to renet yet).
 2. Item pickups in the world + death crate + respawn.
 3. Audio (dig/place/machine hum/Geiger), particles, settings menu, objective list.
 4. Client-side server browser UI wired to the lobby.
@@ -108,7 +109,9 @@ Note: software rendering runs at ~3 FPS, so keep `--view-radius` small for smoke
   right-click of a machine block.
 - Persistence saves modified chunks, players, machines and research, and restores all of them;
   only *modified* chunks are written (unmodified chunks regenerate from the seed by design).
-- `--simulate-latency` / `--simulate-loss` / `--bots` are parsed but not yet wired to renet.
+- `--simulate-latency` / `--simulate-loss` are parsed but not yet wired to renet.
+- `--bots N` works: N simulated players walk, dig and idle through the real server systems.
+  Verified: 8 bots for 45 s, zero panics, 82 blocks mined, 12 chunks loaded.
 - Block textures use a per-face (non-merged) mesh because an atlas cannot tile inside a merged
   quad. `greedy_mesh_with(.., merge = true)` is available for per-block materials later.
 - `client::net` and parts of `client::prediction` are scaffolding with `#[allow(dead_code)]`

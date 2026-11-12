@@ -236,8 +236,24 @@ fn apply_move_inputs(
     }
 }
 
+/// Builds the collision view used by server movement, for reuse by bots.
+#[must_use]
+pub fn world_collision<'a>(
+    world: &'a ServerWorld,
+    registry: &'a ContentRegistry,
+) -> ServerCollision<'a> {
+    ServerCollision { world, registry }
+}
+
+/// Whether a player box at this position would be inside solid blocks.
+#[must_use]
+pub fn spawn_blocked(world: &ServerWorld, registry: &ContentRegistry, position: [f32; 3]) -> bool {
+    let collision = ServerCollision { world, registry };
+    deepcore_shared::movement::box_collides(position, &registry.balance, &collision)
+}
+
 /// Collision view over the server's authoritative world.
-struct ServerCollision<'a> {
+pub struct ServerCollision<'a> {
     world: &'a ServerWorld,
     registry: &'a ContentRegistry,
 }

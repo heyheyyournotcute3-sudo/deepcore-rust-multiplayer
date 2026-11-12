@@ -11,6 +11,7 @@ use bevy::{
 use clap::Parser;
 use deepcore_shared::{SERVER_TICK_HZ, SharedPlugin, content::ContentRegistry};
 
+mod bots;
 mod machines;
 mod net;
 mod persist;
@@ -95,6 +96,7 @@ fn main() -> Result<()> {
             research::ResearchPlugin,
             machines::MachinePlugin,
             persist::PersistencePlugin,
+            bots::BotPlugin,
         ))
         .insert_resource(persist::SavePaths::new(&args.save_dir))
         .init_resource::<TickStats>()
