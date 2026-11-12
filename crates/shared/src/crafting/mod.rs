@@ -71,6 +71,9 @@ pub struct MachineState {
     pub efficiency_modules: u8,
     /// How many linked blocks the cascade has (centrifuges only).
     pub cascade_len: u8,
+    /// The recipe the player pinned in the machine UI. When set, the machine only runs this
+    /// recipe; when unset it picks the first recipe its inputs satisfy.
+    pub selected_recipe: Option<RecipeId>,
 }
 
 impl MachineState {
@@ -89,6 +92,7 @@ impl MachineState {
             speed_modules: 0,
             efficiency_modules: 0,
             cascade_len: 0,
+            selected_recipe: None,
         }
     }
 
@@ -273,8 +277,15 @@ pub fn tick_machine(
         return changed;
     }
 
-    // Nothing running: look for something to start.
-    match find_recipe(registry, state.kind, &state.inputs, researched) {
+    // Nothing running: look for something to start. A pinned recipe takes priority, which is
+    // what lets a player choose between two recipes that share an input (an anvil can make
+    // either rods or a pickaxe head from steel).
+    let candidate = match state.selected_recipe {
+        Some(pinned) => try_pinned_recipe(registry, pinned, &state.inputs, researched)
+            .or_else(|| find_recipe(registry, state.kind, &state.inputs, researched)),
+        None => find_recipe(registry, state.kind, &state.inputs, researched),
+    };
+    match candidate {
         Some((id, recipe)) => {
             if !state.outputs.can_accept_all(&recipe.outputs, registry) {
                 state.idle = IdleReason::OutputFull;
@@ -299,6 +310,26 @@ pub fn tick_machine(
             false
         }
     }
+}
+
+/// Resolves a pinned recipe, checking it belongs to this machine, is unlocked and is satisfied.
+fn try_pinned_recipe(
+    registry: &ContentRegistry,
+    pinned: RecipeId,
+    inputs: &Inventory,
+    researched: &dyn Fn(&str) -> bool,
+) -> Option<(RecipeId, ResolvedRecipe)> {
+    let def = registry.recipe_def(pinned)?;
+    if let Some(tech) = &def.tech
+        && !researched(tech)
+    {
+        return None;
+    }
+    let resolved = registry.resolve_recipe(pinned)?;
+    if resolved.inputs.is_empty() || !inputs.has_all(&resolved.inputs) {
+        return None;
+    }
+    Some((pinned, resolved))
 }
 
 /// Consumes one unit of fuel and returns how many seconds it burns for.
@@ -541,6 +572,38 @@ mod tests {
         assert_eq!(
             try_hand_craft(&reg, smelt, &mut inv, &everything, 1),
             Err(IdleReason::NoRecipe)
+        );
+    }
+
+    #[test]
+    fn a_pinned_recipe_overrides_the_default_choice() {
+        let reg = registry();
+        let (id, def) = machine(&reg, "anvil");
+        let steel = reg.item("steel_ingot").unwrap();
+        let head = reg.item("steel_pickaxe_head").unwrap();
+
+        // Without pinning, the anvil makes rods (the first matching recipe).
+        let mut state = MachineState::for_machine(id, def);
+        state.inputs.add(steel, 3, 64);
+        for _ in 0..200 {
+            tick_machine(&mut state, def, &reg, &everything, 1.0, 0.05);
+        }
+        assert!(state.outputs.count_of(reg.item("steel_rod").unwrap()) > 0);
+
+        // Pinned to the pickaxe head, the same inputs make a head instead.
+        let mut pinned = MachineState::for_machine(id, def);
+        pinned.selected_recipe = Some(reg.recipe("anvil_steel_pickaxe_head").unwrap());
+        pinned.inputs.add(steel, 3, 64);
+        for _ in 0..400 {
+            tick_machine(&mut pinned, def, &reg, &everything, 1.0, 0.05);
+            if pinned.outputs.count_of(head) > 0 {
+                break;
+            }
+        }
+        assert_eq!(
+            pinned.outputs.count_of(head),
+            1,
+            "pinned recipe should produce a head"
         );
     }
 

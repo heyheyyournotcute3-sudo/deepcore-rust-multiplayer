@@ -54,6 +54,7 @@ impl Plugin for MachinePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<MachineIndex>()
             .add_systems(FixedUpdate, (tick_machines, sync_machine_replication))
+            .add_systems(Update, apply_machine_recipe_intents)
             .add_systems(Update, handle_machine_contents_requests);
     }
 }
@@ -281,6 +282,60 @@ pub struct CascadeLink {
     pub members: Vec<BlockPos>,
     /// How many centrifuges are linked.
     pub length: u8,
+}
+
+/// Applies a `SetMachineRecipe` intent: pins the recipe a machine should run.
+///
+/// The recipe must belong to that machine and be unlocked, otherwise the intent is dropped.
+fn apply_machine_recipe_intents(
+    mut requests: Option<MessageReader<FromClient<deepcore_shared::protocol::SetMachineRecipeMsg>>>,
+    mut machines: Query<&mut MachineEntity>,
+    registry: Res<ContentRegistry>,
+    research: Res<crate::research::ResearchState>,
+) {
+    let Some(requests) = requests.as_mut() else {
+        return;
+    };
+    for FromClient {
+        message: request, ..
+    } in requests.read()
+    {
+        let Some(entity) = machine_from_id(&machines, request.machine) else {
+            continue;
+        };
+        let Ok(mut machine) = machines.get_mut(entity) else {
+            continue;
+        };
+        let Some(kind_def) = registry.machine_def(machine.kind) else {
+            continue;
+        };
+        match request.recipe {
+            None => machine.state.selected_recipe = None,
+            Some(recipe) => {
+                let Some(def) = registry.recipe_def(recipe) else {
+                    continue;
+                };
+                // The recipe must run in this machine type and be researched.
+                if def.machine != kind_def.id {
+                    continue;
+                }
+                if let Some(tech) = &def.tech
+                    && !research.is_researched_name(&registry, tech)
+                {
+                    continue;
+                }
+                machine.state.selected_recipe = Some(recipe);
+                machine.state.current = None;
+                machine.state.progress = 0.0;
+            }
+        }
+    }
+}
+
+/// Finds a machine entity from the id the client sent (the entity's bits).
+fn machine_from_id(machines: &Query<&mut MachineEntity>, id: u64) -> Option<Entity> {
+    let entity = Entity::try_from_bits(id)?;
+    machines.contains(entity).then_some(entity)
 }
 
 /// Requests the contents of the machine the player has open, and sends them to that client.

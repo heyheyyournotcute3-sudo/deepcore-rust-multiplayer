@@ -4,8 +4,8 @@ Continuation notes. Read this file, then `docs/PLAN.md`.
 
 ## Current state
 
-**M0–M2 complete. M3 (inventory/crafting UI) and the M4 UI surfaces are in. Machines as
-placeable block entities, and the deeper era content, are next.**
+**M0–M4 complete. Era progression (including the full nuclear chain) is proven by headless
+integration tests. Persistence, bots, latency simulation, lobby and polish are next.**
 
 ### Working and verified
 
@@ -36,14 +36,25 @@ placeable block entities, and the deeper era content, are next.**
 - Inventory is pushed from the server to its owner as a private message on change; the
   hotbar's selected item is what the client uses as its tool.
 
+### Tests that prove the game connects end to end
+
+`crates/server/tests/progression.rs` — 14 tests, all green:
+
+- `era1_..._hardened_steel_pickaxe`, `era2_..._steam_drill_and_ore_yield_bonus`,
+  `era3_..._circuits_and_aluminium`, `era4_..._stainless_and_a_battery_drill`,
+  **`era5_nuclear_chain_produces_a_nuclear_drill_and_a_stable_reactor`** (raw uranium through
+  crush → leach → precipitate → convert → 4-centrifuge cascade → fabricate → control rods →
+  Nuclear Drill → stable reactor → waste casks).
+- Every tool and machine is craftable; every machine is tech-gated; recipes fit their machines'
+  slots; recipe times are sane; every era's cost is reachable from that era's ores.
+
 ### Next up
 
-1. **M4 machines in the world**: block entities as ECS entities at a `BlockPos`, multi-block
-   ghost placement with rotation, server machine ticking (`shared::crafting::tick_machine` is
-   ready and tested), machine contents sent to the client with the UI open.
-2. **Research**: Research Desk deposits feeding `shared` tech nodes; replicate tech state.
+1. **M9 persistence**: region files for modified chunks + SQLite for players/machines/tech,
+   autosave, crash-safe writes.
+2. **Bot clients** (`--bots`) and latency/loss injection for the M2 acceptance test.
 3. Item pickups in the world + death crate + respawn.
-4. Bot clients (`--bots`) and latency/loss simulation (flags parsed, injection not wired).
+4. **M10 lobby**: axum + sqlx accounts, tokens, server browser, Dockerfiles.
 
 ## Environment facts (verified, not assumed)
 
@@ -89,9 +100,11 @@ Note: software rendering runs at ~3 FPS, so keep `--view-radius` small for smoke
   polish.
 - The workbench crafting panel runs the recipe locally and does not yet send a `Craft`
   intent, so in multiplayer the server does not re-validate hand crafting.
-- The tech tree screen shows the full tree from content, but research deposits are not yet
-  wired to the server, so nothing unlocks in play yet.
-- The machine panel exists but nothing spawns machines in the world yet.
+- The client does not yet send `ResearchDeposit` or `SetMachineRecipe` from the UI (both are
+  implemented and validated server-side).
+- Machines tick and replicate, but the client does not draw machine models yet.
+- Machine contents are sent on interact, but the client does not yet open the panel on
+  right-click of a machine block.
 - `--simulate-latency` / `--simulate-loss` / `--bots` are parsed but not yet wired to renet.
 - Block textures use a per-face (non-merged) mesh because an atlas cannot tile inside a merged
   quad. `greedy_mesh_with(.., merge = true)` is available for per-block materials later.
