@@ -16,6 +16,7 @@ tracing = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
 sha2 = { workspace = true }
+bevy_replicon = { workspace = true, default-features = false }
 
 [dev-dependencies]
 proptest = { workspace = true }

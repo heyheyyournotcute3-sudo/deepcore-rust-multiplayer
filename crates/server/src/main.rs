@@ -9,7 +9,11 @@ use bevy::{
     time::common_conditions::on_timer,
 };
 use clap::Parser;
-use deepcore_shared::{SERVER_TICK_HZ, SharedPlugin};
+use deepcore_shared::{SERVER_TICK_HZ, SharedPlugin, content::ContentRegistry};
+
+mod net;
+mod sim;
+mod world;
 use tracing::info;
 
 /// Command-line options for the dedicated server.
@@ -59,13 +63,26 @@ struct ServerRoot;
 fn main() -> Result<()> {
     let args = ServerArgs::parse();
 
+    // Load and validate content before starting: a broken content file must fail loudly.
+    let content_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/data");
+    let registry = ContentRegistry::load_from_dir(&content_dir)?;
+    info!(
+        blocks = registry.blocks.len(),
+        recipes = registry.recipes.len(),
+        hash = registry.content_hash(),
+        "content loaded"
+    );
+
     App::new()
         .insert_resource(args.clone())
+        .insert_resource(registry)
         .add_plugins(MinimalPlugins.set(ScheduleRunnerPlugin::run_loop(
             std::time::Duration::from_secs_f64(1.0 / SERVER_TICK_HZ as f64),
         )))
         .add_plugins(bevy::log::LogPlugin::default())
         .add_plugins(SharedPlugin)
+        .add_plugins(bevy::state::app::StatesPlugin)
+        .add_plugins((net::NetPlugin, world::WorldPlugin, sim::SimPlugin))
         .init_resource::<TickStats>()
         .add_systems(Startup, setup)
         .add_systems(FixedUpdate, count_tick)

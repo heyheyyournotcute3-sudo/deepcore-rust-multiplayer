@@ -85,15 +85,6 @@ fn main() -> Result<()> {
     App::new()
         .insert_resource(args.clone())
         .insert_resource(registry)
-        .insert_resource(net::ServerConfigRes {
-            address: args.connect.clone().unwrap_or_else(|| "127.0.0.1".into()),
-            port: args.port,
-            seed: args.seed,
-            name: args.name.clone(),
-            simulate_latency: args.simulate_latency,
-            simulate_loss: args.simulate_loss,
-            hosting: args.connect.is_none(),
-        })
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "Deepcore".into(),

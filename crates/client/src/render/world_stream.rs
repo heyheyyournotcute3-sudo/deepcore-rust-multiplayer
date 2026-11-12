@@ -47,11 +47,10 @@ fn init_worldgen(
     mut streamer: ResMut<WorldStreamer>,
     registry: Res<ContentRegistry>,
     args: Res<crate::ClientArgs>,
-    server: Option<Res<crate::net::ServerConfigRes>>,
 ) {
     streamer.radius_xz = args.view_radius.clamp(1, 12);
     streamer.radius_y = (args.view_radius / 2).clamp(1, 8);
-    let seed = server.map_or(1337, |s| s.seed);
+    let seed = args.seed;
     match WorldGen::new(&registry, seed) {
         Ok(generator) => {
             info!(seed, "client world generator ready");
@@ -64,6 +63,12 @@ fn init_worldgen(
     }
 }
 
+/// Decodes a chunk payload sent by the server (zstd-compressed postcard).
+pub fn decode_chunk_payload(payload: &[u8]) -> Option<deepcore_shared::voxel::Chunk> {
+    let raw = zstd::decode_all(payload).ok()?;
+    postcard::from_bytes(&raw).ok()
+}
+
 /// Streams chunks in a radius around the player, nearest first, and unloads far ones.
 fn stream_chunks(
     mut chunks: ResMut<ClientChunks>,
@@ -73,6 +78,9 @@ fn stream_chunks(
     camera: Query<&Transform, With<Camera3d>>,
     mut budget: Local<u32>,
 ) {
+    // When connected to a server the chunks arrive over the network, so nothing is generated
+    // here; the streamer only keeps the radius bookkeeping up to date.
+    let local_generation = streamer.local_generation;
     let Some(generator) = streamer.generator.clone() else {
         return;
     };
@@ -87,6 +95,10 @@ fn stream_chunks(
         cam.translation.z.floor() as i32,
     )
     .chunk();
+
+    if !local_generation {
+        return;
+    }
 
     // Limit generation per frame so streaming never stalls a frame.
     *budget = budget.saturating_add(2).min(24);

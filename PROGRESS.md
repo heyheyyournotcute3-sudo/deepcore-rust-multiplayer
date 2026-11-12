@@ -4,8 +4,8 @@ Continuation notes. Read this file, then `docs/PLAN.md`.
 
 ## Current state
 
-**M0 complete. M1 complete (single-process voxel world). Shared rule layer for M3–M8 is
-written and unit-tested; transport/UI/persistence are next.**
+**M0, M1 complete. M2 (multiplayer foundation) working end-to-end. Shared rule layer for
+M3–M8 written and unit-tested; inventory/crafting/machine UIs are next.**
 
 ### Working and verified
 
@@ -26,14 +26,16 @@ written and unit-tested; transport/UI/persistence are next.**
   reactor core with scram and meltdown, protocol types.
 - **Verified visually** via headless screenshot (xvfb + software Vulkan): terrain, trees,
   speckled block textures, HUD all render correctly.
+- **Multiplayer (M2) verified with two real clients against a real server**:
+  handshake (protocol + content hash) accepted, players spawned server-side, chunks
+  streamed and decoded with zero errors, replication of transforms registered.
 
 ### Next up
 
-1. **M2 multiplayer**: wire `bevy_replicon` + `bevy_replicon_renet`. Protocol types are ready
-   in `shared::protocol`; `client::prediction` holds the buffer half of reconciliation.
-2. **M3 inventory/crafting UI** in egui (rules exist in `shared::inventory`/`crafting`).
-3. **M4 machines**: block entities + machine UI (rules exist in `shared::crafting`).
-4. Server-side chunk store, mining validation, block-change broadcast.
+1. **M3 inventory/crafting UI** in egui (rules exist in `shared::inventory`/`crafting`).
+2. **M4 machines**: block entities + machine UI (rules exist in `shared::crafting`).
+3. Item pickups + death crate, workbench hand-crafting UI, tech tree graph UI.
+4. Bot clients (`--bots`) and latency/loss simulation (flags parsed, injection not wired).
 
 ## Environment facts (verified, not assumed)
 
@@ -74,9 +76,11 @@ Note: software rendering runs at ~3 FPS, so keep `--view-radius` small for smoke
 
 ## Known issues / limitations
 
-- Client generates its own world from the seed; it does not yet receive chunks from a server
-  (that is the M2 transport work).
-- Mining and placing are client-local only; server validation lands with M2.
+- Mining is validated server-side, but the client still applies the break locally first, so a
+  rejected break briefly shows then reverts when the block-change arrives. Needs prediction
+  polish.
+- Inventory contents are not yet pushed to the client (needs the inventory UI to consume them).
+- `--simulate-latency` / `--simulate-loss` / `--bots` are parsed but not yet wired to renet.
 - Block textures use a per-face (non-merged) mesh because an atlas cannot tile inside a merged
   quad. `greedy_mesh_with(.., merge = true)` is available for per-block materials later.
 - `client::net` and parts of `client::prediction` are scaffolding with `#[allow(dead_code)]`

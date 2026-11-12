@@ -4,6 +4,10 @@
 //! type in this module changes shape, so mismatched clients are rejected at the handshake
 //! instead of desyncing.
 
+pub mod net_register;
+
+pub use net_register::*;
+
 use serde::{Deserialize, Serialize};
 
 use crate::content::{BlockId, ItemId, MachineId, RecipeId, TechId};
@@ -131,7 +135,7 @@ pub struct NetVitals {
 }
 
 /// A single block change, batched per tick.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, bevy::prelude::Event)]
 pub struct BlockChange {
     /// Where the change happened.
     pub pos: NetBlockPos,
@@ -140,7 +144,7 @@ pub struct BlockChange {
 }
 
 /// A chunk sent from the server to a client.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, bevy::prelude::Event)]
 pub struct ChunkMessage {
     /// Chunk coordinates.
     pub x: i32,
@@ -153,7 +157,7 @@ pub struct ChunkMessage {
 }
 
 /// A chunk the client should drop because it left the view radius.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, bevy::prelude::Event)]
 pub struct ChunkUnload {
     /// Chunk coordinates.
     pub x: i32,
@@ -181,7 +185,7 @@ pub struct NetMachine {
 }
 
 /// A machine's full slot contents, sent only to the client with that UI open.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, bevy::prelude::Event)]
 pub struct MachineContents {
     /// The machine entity this belongs to.
     pub machine: u64,
@@ -196,7 +200,7 @@ pub struct MachineContents {
 }
 
 /// The team-shared tech tree state.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, bevy::prelude::Event)]
 pub struct NetTechState {
     /// Which nodes are researched.
     pub researched: Vec<TechId>,
@@ -205,7 +209,7 @@ pub struct NetTechState {
 }
 
 /// Power/steam network statistics, sent once per second to clients viewing the overlay.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, bevy::prelude::Event)]
 pub struct NetPowerStats {
     /// Network identifier.
     pub network: u32,
@@ -224,7 +228,7 @@ pub struct NetPowerStats {
 // ================================================================ client -> server intents
 
 /// A movement intent, sent unreliably with a sequence number.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, bevy::prelude::Event)]
 pub struct MoveInputMsg {
     /// Sequence number, increasing per input.
     pub seq: u32,
@@ -245,7 +249,7 @@ pub struct MoveInputMsg {
 }
 
 /// The client's start-mining intent.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, bevy::prelude::Event)]
 pub struct StartMiningMsg {
     /// The block being mined.
     pub block: NetBlockPos,
@@ -254,7 +258,7 @@ pub struct StartMiningMsg {
 }
 
 /// The client's place-block intent.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, bevy::prelude::Event)]
 pub struct PlaceBlockMsg {
     /// Where to place.
     pub pos: NetBlockPos,
@@ -265,14 +269,14 @@ pub struct PlaceBlockMsg {
 }
 
 /// The client's interact intent, e.g. opening a machine.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, bevy::prelude::Event)]
 pub struct InteractMsg {
     /// The block interacted with.
     pub pos: NetBlockPos,
 }
 
 /// The client's item-move intent.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, bevy::prelude::Event)]
 pub struct MoveItemsMsg {
     /// Source container: 0 = player, 1 = the machine in `container_id`.
     pub from_container: u8,
@@ -291,7 +295,7 @@ pub struct MoveItemsMsg {
 }
 
 /// The client's crafting intent.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, bevy::prelude::Event)]
 pub struct CraftMsg {
     /// The recipe to craft.
     pub recipe: RecipeId,
@@ -300,7 +304,7 @@ pub struct CraftMsg {
 }
 
 /// The client's intent to change what a machine is producing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, bevy::prelude::Event)]
 pub struct SetMachineRecipeMsg {
     /// The machine entity.
     pub machine: u64,
@@ -309,7 +313,7 @@ pub struct SetMachineRecipeMsg {
 }
 
 /// The client's research deposit intent.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, bevy::prelude::Event)]
 pub struct ResearchDepositMsg {
     /// The tech node.
     pub node: TechId,
@@ -318,18 +322,18 @@ pub struct ResearchDepositMsg {
 }
 
 /// A chat message.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, bevy::prelude::Event)]
 pub struct ChatMsg {
     /// The text.
     pub text: String,
 }
 
 /// The client's request to respawn after death.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, bevy::prelude::Event)]
 pub struct RespawnMsg;
 
 /// The client's reactor control intent.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, bevy::prelude::Event)]
 pub struct ReactorControlMsg {
     /// The reactor console entity.
     pub console: u64,
@@ -342,7 +346,7 @@ pub struct ReactorControlMsg {
 // ================================================================ server -> client events
 
 /// A notification shown in the HUD.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, bevy::prelude::Event)]
 pub struct Notification {
     /// The message text.
     pub text: String,
@@ -351,7 +355,7 @@ pub struct Notification {
 }
 
 /// A chat message from another player, or a system message.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, bevy::prelude::Event)]
 pub struct ChatBroadcast {
     /// Sender name, or "Server".
     pub from: String,
@@ -360,7 +364,7 @@ pub struct ChatBroadcast {
 }
 
 /// The handshake request a client sends first.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, bevy::prelude::Message)]
 pub struct HandshakeRequest {
     /// The client's protocol version.
     pub protocol: u32,
@@ -373,7 +377,7 @@ pub struct HandshakeRequest {
 }
 
 /// The handshake response the server sends back.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, bevy::prelude::Message)]
 pub struct HandshakeResponse {
     /// Whether the connection was accepted.
     pub accepted: bool,
@@ -386,7 +390,7 @@ pub struct HandshakeResponse {
 }
 
 /// The result of a mining action, sent back to the miner for feedback.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, bevy::prelude::Event)]
 pub struct MiningFeedback {
     /// The block.
     pub block: NetBlockPos,
@@ -397,7 +401,7 @@ pub struct MiningFeedback {
 }
 
 /// The owner's inventory contents, sent on change.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, bevy::prelude::Event)]
 pub struct InventoryUpdate {
     /// All slots, hotbar first.
     pub slots: Vec<ItemStack>,
