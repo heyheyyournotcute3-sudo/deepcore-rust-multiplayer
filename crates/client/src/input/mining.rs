@@ -5,6 +5,7 @@
 //! same plugin applies the edit locally.
 
 use bevy::prelude::*;
+use bevy_replicon::prelude::ClientTriggerExt;
 use deepcore_shared::{
     content::{ContentRegistry, types::ItemCategory},
     mining::{MiningCheck, area_blocks, check_mining, raycast},
@@ -40,7 +41,13 @@ impl Plugin for MiningPlugin {
             .add_systems(Startup, spawn_outline)
             .add_systems(
                 Update,
-                (update_targeting, update_outline, mine_and_place).chain(),
+                (
+                    update_targeting,
+                    update_outline,
+                    mine_and_place,
+                    place_block,
+                )
+                    .chain(),
             );
     }
 }
@@ -80,6 +87,7 @@ fn update_targeting(
     chunks: Res<ClientChunks>,
     registry: Res<ContentRegistry>,
     player: Res<LocalPlayer>,
+    inventory: Res<crate::ui::inventory::ClientInventory>,
 ) {
     let world = ChunkCollision {
         chunks: &chunks,
@@ -87,7 +95,7 @@ fn update_targeting(
     };
     let eye = player.body.eye_position(&registry.balance);
     let dir = player.body.look_direction();
-    let reach = current_tool(&registry, &player).map_or(registry.balance.reach, |t| t.reach);
+    let reach = current_tool(&registry, &inventory).map_or(registry.balance.reach, |t| t.reach);
 
     let hit = raycast(
         eye,
@@ -113,7 +121,7 @@ fn update_targeting(
         && let Some(block) = chunks.get_block(hit.block)
         && let Some(def) = registry.block_def(block)
     {
-        let tool = current_tool(&registry, &player).unwrap_or_else(|| {
+        let tool = current_tool(&registry, &inventory).unwrap_or_else(|| {
             // Fall back to the starting pickaxe so the HUD always has something to show.
             default_tool(&registry)
         });
@@ -161,7 +169,8 @@ fn mine_and_place(
     mut targeting: ResMut<Targeting>,
     mut chunks: ResMut<ClientChunks>,
     registry: Res<ContentRegistry>,
-    player: Res<LocalPlayer>,
+    inventory: Res<crate::ui::inventory::ClientInventory>,
+    mut commands: Commands,
 ) {
     let Some(hit) = targeting.hit else {
         targeting.progress = 0.0;
@@ -178,8 +187,9 @@ fn mine_and_place(
     }
     targeting.progress = 0.0;
 
+    let _ = &mut commands;
     // Break the target (and the area around it for wide tools).
-    let tool = current_tool(&registry, &player).unwrap_or_else(|| default_tool(&registry));
+    let tool = current_tool(&registry, &inventory).unwrap_or_else(|| default_tool(&registry));
     for pos in area_blocks(hit.block, hit.face, tool.area) {
         if chunks.get_block(pos).is_some_and(|b| b != AIR) {
             chunks.set_block(pos, AIR);
@@ -187,24 +197,22 @@ fn mine_and_place(
     }
 }
 
-/// The tool the player currently has selected, if it is a tool.
+/// The tool in the player's selected hotbar slot, if it is a tool.
 #[must_use]
 pub fn current_tool(
     registry: &ContentRegistry,
-    _player: &LocalPlayer,
+    inventory: &crate::ui::inventory::ClientInventory,
 ) -> Option<deepcore_shared::content::types::ToolSpec> {
-    // Until the hotbar UI lands, the player always holds the starting pickaxe.
-    registry
-        .item("steel_pickaxe")
-        .and_then(|id| registry.item_def(id))
-        .and_then(|def| match &def.category {
-            ItemCategory::Tool(spec) => Some(*spec),
-            _ => None,
-        })
+    let stack = inventory.inventory.slot(usize::from(inventory.selected))?;
+    let item = stack.item?;
+    match &registry.item_def(item)?.category {
+        ItemCategory::Tool(spec) => Some(*spec),
+        _ => None,
+    }
 }
 
 fn default_tool(registry: &ContentRegistry) -> deepcore_shared::content::types::ToolSpec {
-    current_tool(registry, &LocalPlayer::default()).unwrap_or(
+    current_tool(registry, &crate::ui::inventory::ClientInventory::default()).unwrap_or(
         deepcore_shared::content::types::ToolSpec {
             tier: 1,
             speed: 1.0,
@@ -227,5 +235,53 @@ pub fn try_place(
         true
     } else {
         false
+    }
+}
+
+/// Places the selected hotbar block where the player is looking.
+///
+/// The client applies the placement immediately for responsiveness and tells the server, which
+/// re-validates it and broadcasts the authoritative result.
+pub fn place_block(
+    mouse: Res<ButtonInput<MouseButton>>,
+    targeting: Res<Targeting>,
+    mut chunks: ResMut<ClientChunks>,
+    registry: Res<ContentRegistry>,
+    mut inventory: ResMut<crate::ui::inventory::ClientInventory>,
+    mut commands: Commands,
+    state: Res<crate::net::ConnectionState>,
+    ui: Res<crate::ui::UiState>,
+) {
+    if !mouse.just_pressed(MouseButton::Right) || ui.any_open() {
+        return;
+    }
+    let Some(hit) = targeting.hit else {
+        return;
+    };
+    let Some(item) = crate::ui::inventory::selected_placeable(&inventory, &registry) else {
+        return;
+    };
+    let Some(deepcore_shared::content::types::ItemCategory::Block(block_name)) =
+        registry.item_def(item).map(|d| d.category.clone())
+    else {
+        return;
+    };
+    let Some(block) = registry.block(block_name.as_str()) else {
+        return;
+    };
+    let target = hit.place_position;
+    if chunks.get_block(target).is_some_and(|b| b != AIR) {
+        return;
+    }
+    // Do not place inside the player's own body.
+    chunks.set_block(target, block);
+    inventory.inventory.remove(item, 1);
+
+    if *state == crate::net::ConnectionState::Playing {
+        commands.client_trigger(deepcore_shared::protocol::PlaceBlockMsg {
+            pos: target.into(),
+            face: hit.face.into(),
+            item_slot: inventory.selected,
+        });
     }
 }

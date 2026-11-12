@@ -4,8 +4,8 @@ Continuation notes. Read this file, then `docs/PLAN.md`.
 
 ## Current state
 
-**M0, M1 complete. M2 (multiplayer foundation) working end-to-end. Shared rule layer for
-M3–M8 written and unit-tested; inventory/crafting/machine UIs are next.**
+**M0–M2 complete. M3 (inventory/crafting UI) and the M4 UI surfaces are in. Machines as
+placeable block entities, and the deeper era content, are next.**
 
 ### Working and verified
 
@@ -29,12 +29,20 @@ M3–M8 written and unit-tested; inventory/crafting/machine UIs are next.**
 - **Multiplayer (M2) verified with two real clients against a real server**:
   handshake (protocol + content hash) accepted, players spawned server-side, chunks
   streamed and decoded with zero errors, replication of transforms registered.
+- **UI (M3/M4 surfaces)**: inventory screen with click-to-pick-up / drop / merge / swap,
+  always-on hotbar with number-key selection, workbench hand-crafting panel, tech tree
+  screen, machine panel (slots, idle reason, progress, reactor readout). Mouse capture is
+  released while a screen is open. Verified by screenshot.
+- Inventory is pushed from the server to its owner as a private message on change; the
+  hotbar's selected item is what the client uses as its tool.
 
 ### Next up
 
-1. **M3 inventory/crafting UI** in egui (rules exist in `shared::inventory`/`crafting`).
-2. **M4 machines**: block entities + machine UI (rules exist in `shared::crafting`).
-3. Item pickups + death crate, workbench hand-crafting UI, tech tree graph UI.
+1. **M4 machines in the world**: block entities as ECS entities at a `BlockPos`, multi-block
+   ghost placement with rotation, server machine ticking (`shared::crafting::tick_machine` is
+   ready and tested), machine contents sent to the client with the UI open.
+2. **Research**: Research Desk deposits feeding `shared` tech nodes; replicate tech state.
+3. Item pickups in the world + death crate + respawn.
 4. Bot clients (`--bots`) and latency/loss simulation (flags parsed, injection not wired).
 
 ## Environment facts (verified, not assumed)
@@ -79,7 +87,11 @@ Note: software rendering runs at ~3 FPS, so keep `--view-radius` small for smoke
 - Mining is validated server-side, but the client still applies the break locally first, so a
   rejected break briefly shows then reverts when the block-change arrives. Needs prediction
   polish.
-- Inventory contents are not yet pushed to the client (needs the inventory UI to consume them).
+- The workbench crafting panel runs the recipe locally and does not yet send a `Craft`
+  intent, so in multiplayer the server does not re-validate hand crafting.
+- The tech tree screen shows the full tree from content, but research deposits are not yet
+  wired to the server, so nothing unlocks in play yet.
+- The machine panel exists but nothing spawns machines in the world yet.
 - `--simulate-latency` / `--simulate-loss` / `--bots` are parsed but not yet wired to renet.
 - Block textures use a per-face (non-merged) mesh because an atlas cannot tile inside a merged
   quad. `greedy_mesh_with(.., merge = true)` is available for per-block materials later.

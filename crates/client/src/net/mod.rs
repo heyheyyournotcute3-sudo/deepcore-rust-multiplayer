@@ -59,7 +59,8 @@ impl Plugin for NetPlugin {
             .add_systems(Update, on_handshake_response)
             .add_observer(on_chunk_message)
             .add_observer(on_block_change)
-            .add_observer(on_mining_feedback);
+            .add_observer(on_mining_feedback)
+            .add_observer(apply_inventory_update);
         register_networking(app);
     }
 }
@@ -234,6 +235,18 @@ fn on_mining_feedback(feedback: On<MiningFeedback>) {
         1 => debug!("server confirmed a block break"),
         _ => {}
     }
+}
+
+/// Applies the owner's inventory snapshot from the server.
+fn apply_inventory_update(
+    update: On<deepcore_shared::protocol::InventoryUpdate>,
+    mut inv: ResMut<crate::ui::inventory::ClientInventory>,
+) {
+    let update = update.event();
+    for (index, stack) in update.slots.iter().enumerate() {
+        inv.inventory.set_slot(index, *stack);
+    }
+    inv.selected = update.selected;
 }
 
 /// Interpolates other players' transforms onto their entities.

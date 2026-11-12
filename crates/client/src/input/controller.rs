@@ -84,11 +84,21 @@ fn grab_cursor(
     mut windows: Query<&mut CursorOptions, With<PrimaryWindow>>,
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
+    ui: Res<crate::ui::UiState>,
     mut player: ResMut<LocalPlayer>,
 ) {
     let Ok(mut cursor) = windows.single_mut() else {
         return;
     };
+    // While a UI screen is open the cursor must be free, or the player cannot click anything.
+    if ui.any_open() {
+        if player.captured {
+            cursor.grab_mode = CursorGrabMode::None;
+            cursor.visible = true;
+            player.captured = false;
+        }
+        return;
+    }
     if mouse.just_pressed(MouseButton::Left) && !player.captured {
         cursor.grab_mode = CursorGrabMode::Locked;
         cursor.visible = false;

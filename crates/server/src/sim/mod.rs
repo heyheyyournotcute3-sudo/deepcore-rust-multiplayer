@@ -12,8 +12,8 @@ use deepcore_shared::{
     mining::{MiningCheck, area_blocks, check_mining, raycast},
     movement::{MoveInput, PlayerBody, step_body},
     protocol::{
-        MiningFeedback, MoveInputMsg, NetBlockPos, NetPlayerInfo, NetTransform, NetVitals,
-        PlaceBlockMsg, StartMiningMsg,
+        InventoryUpdate, MiningFeedback, MoveInputMsg, NetBlockPos, NetPlayerInfo, NetTransform,
+        NetVitals, PlaceBlockMsg, StartMiningMsg,
         net_register::{ReplicatedPlayerInfo, ReplicatedTransform},
     },
     voxel::{AIR, BlockPos, coords::SURFACE_Y},
@@ -63,6 +63,7 @@ impl Plugin for SimPlugin {
                 tick_mining,
                 tick_vitals,
                 replicate_players,
+                push_inventory_updates,
             )
                 .chain(),
         );
@@ -459,6 +460,25 @@ fn replicate_players(
         if info.0.name.is_empty() {
             info.0.name = player.name.clone();
         }
+    }
+}
+
+/// Sends each player their own inventory whenever it changes.
+///
+/// Inventories are private: they go to the owner as a message, never as a replicated component.
+fn push_inventory_updates(
+    players: Query<(Entity, &ServerPlayer), Changed<ServerPlayer>>,
+    mut commands: Commands,
+) {
+    for (entity, player) in &players {
+        commands.server_trigger(ToClients {
+            targets: SendTargets::Single(player.client.into()),
+            message: InventoryUpdate {
+                slots: player.inventory.slots().to_vec(),
+                selected: player.selected,
+            },
+        });
+        let _ = entity;
     }
 }
 
