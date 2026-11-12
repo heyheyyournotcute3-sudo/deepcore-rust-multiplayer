@@ -1,0 +1,30 @@
+# Deepcore lobby service: accounts and the server browser.
+FROM rust:1.88-bookworm AS builder
+WORKDIR /build
+COPY Cargo.toml Cargo.lock ./
+COPY crates/shared/Cargo.toml crates/shared/
+COPY crates/server/Cargo.toml crates/server/
+COPY crates/client/Cargo.toml crates/client/
+COPY crates/lobby/Cargo.toml crates/lobby/
+COPY tools/atlas_gen/Cargo.toml tools/atlas_gen/
+RUN mkdir -p crates/shared/src crates/server/src crates/client/src crates/lobby/src tools/atlas_gen/src \
+    && echo "" > crates/shared/src/lib.rs \
+    && echo "fn main(){}" > crates/server/src/main.rs \
+    && echo "fn main(){}" > crates/client/src/main.rs \
+    && echo "fn main(){}" > crates/lobby/src/main.rs \
+    && echo "fn main(){}" > tools/atlas_gen/src/main.rs \
+    && cargo build --release -p deepcore-lobby || true
+COPY . .
+RUN cargo build --release -p deepcore-lobby
+
+FROM debian:bookworm-slim
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /lobby
+COPY --from=builder /build/target/release/lobby /usr/local/bin/deepcore-lobby
+VOLUME ["/lobby/data"]
+EXPOSE 8080/tcp
+ENV RUST_LOG=info
+ENTRYPOINT ["deepcore-lobby"]
+CMD ["--port", "8080", "--database", "/lobby/data/lobby.sqlite"]

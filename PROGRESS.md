@@ -4,8 +4,8 @@ Continuation notes. Read this file, then `docs/PLAN.md`.
 
 ## Current state
 
-**M0–M4 and M9 persistence complete. Era progression (including the full nuclear chain) is
-proven by headless integration tests. Bots, latency injection, the lobby and final polish
+**M0–M4, M9 persistence and M10 lobby complete. Era progression (including the full nuclear
+chain) is proven by headless integration tests. Bots, latency injection and final polish
 remain.**
 
 ### Working and verified
@@ -53,8 +53,8 @@ remain.**
 
 1. **Bot clients** (`--bots`) and latency/loss injection for the M2 acceptance test.
 2. Item pickups in the world + death crate + respawn.
-3. **M10 lobby**: axum + sqlx accounts, tokens, server browser, Dockerfiles.
-4. Audio (dig/place/machine hum/Geiger), particles, settings menu, objective list.
+3. Audio (dig/place/machine hum/Geiger), particles, settings menu, objective list.
+4. Client-side server browser UI wired to the lobby.
 
 ## Environment facts (verified, not assumed)
 
@@ -83,6 +83,7 @@ remain.**
 cargo build --workspace
 cargo run -p server
 cargo run -p client
+cargo run -p lobby                 # accounts + server browser on :8080
 cargo run -p deepcore-shared --bin balance_report
 cargo run -p atlas_gen
 ./scripts/check.sh

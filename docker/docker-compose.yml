@@ -1,0 +1,27 @@
+# Runs the lobby and one dedicated server together.
+#   docker compose -f docker/docker-compose.yml up --build
+services:
+  lobby:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.lobby
+    ports:
+      - "8080:8080"
+    volumes:
+      - lobby-data:/lobby/data
+
+  server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.server
+    ports:
+      - "7777:7777/udp"
+    volumes:
+      - server-saves:/deepcore/saves
+    environment:
+      RUST_LOG: info
+    command: ["--port", "7777", "--seed", "1337", "--save-dir", "/deepcore/saves"]
+
+volumes:
+  lobby-data:
+  server-saves:
