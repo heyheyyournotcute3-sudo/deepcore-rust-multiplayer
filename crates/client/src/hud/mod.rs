@@ -19,8 +19,17 @@ pub struct HudPlugin;
 
 impl Plugin for HudPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, spawn_hud)
-            .add_systems(Update, (update_crosshair, update_depth, update_stats_text));
+        app.init_resource::<crate::audio::ClientHazards>()
+            .add_systems(Startup, spawn_hud)
+            .add_systems(
+                Update,
+                (
+                    update_crosshair,
+                    update_depth,
+                    update_stats_text,
+                    update_vitals_hud,
+                ),
+            );
     }
 }
 
@@ -116,6 +125,38 @@ fn spawn_hud(mut commands: Commands) {
                 },
                 TextColor(Color::srgb(0.85, 0.92, 1.0)),
                 DepthText,
+            ));
+
+            // Vitals, bottom left above the depth meter.
+            root.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(18.0),
+                    bottom: Val::Px(46.0),
+                    ..default()
+                },
+                Text::new(""),
+                TextFont {
+                    font_size: FontSize::Px(16.0),
+                    ..default()
+                },
+                TextColor(Color::srgb(0.85, 0.95, 0.85)),
+                VitalsText,
+            ));
+
+            // Radiation grain overlay, drawn behind the rest of the HUD.
+            root.spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(0.0),
+                    top: Val::Px(0.0),
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(100.0),
+                    ..default()
+                },
+                BackgroundColor(Color::NONE),
+                RadiationOverlay,
+                ZIndex(-1),
             ));
 
             // Debug stats, top left.
@@ -227,5 +268,49 @@ fn update_stats_text(
         );
     } else {
         text.clear();
+    }
+}
+
+/// The vitals readout: health, dose and heat, plus the radiation screen grain.
+#[derive(Component)]
+pub struct VitalsText;
+
+/// A full-screen tint used for radiation grain.
+#[derive(Component)]
+pub struct RadiationOverlay;
+
+/// Draws the vitals line and the radiation overlay.
+fn update_vitals_hud(
+    hazards: Res<crate::audio::ClientHazards>,
+    registry: Res<ContentRegistry>,
+    mut text: Query<&mut Text, With<VitalsText>>,
+    mut overlay: Query<&mut BackgroundColor, With<RadiationOverlay>>,
+) {
+    if let Ok(mut text) = text.single_mut() {
+        let balance = &registry.balance;
+        let status = if hazards.dose >= balance.dose_damage {
+            "DANGER: lethal dose"
+        } else if hazards.dose >= balance.dose_no_regen {
+            "WARNING: no regeneration"
+        } else if hazards.dose >= balance.dose_grain {
+            "radiation detected"
+        } else {
+            ""
+        };
+        **text = format!(
+            "Dose {:.0}  Heat {:.0}  {}",
+            hazards.dose, hazards.heat, status
+        );
+    }
+    if let Ok(mut colour) = overlay.single_mut() {
+        let grain = deepcore_shared::hazards::screen_grain(
+            &deepcore_shared::hazards::HazardState {
+                dose: hazards.dose,
+                heat: hazards.heat,
+                oxygen: 1.0,
+            },
+            &registry.balance,
+        );
+        colour.0 = Color::srgba(0.6, 0.9, 0.3, grain * 0.18);
     }
 }

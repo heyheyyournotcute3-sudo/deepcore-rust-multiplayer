@@ -12,6 +12,7 @@ use clap::Parser;
 use deepcore_shared::{SERVER_TICK_HZ, SharedPlugin, content::ContentRegistry};
 
 mod bots;
+mod loot;
 mod machines;
 mod net;
 mod persist;
@@ -97,6 +98,7 @@ fn main() -> Result<()> {
             machines::MachinePlugin,
             persist::PersistencePlugin,
             bots::BotPlugin,
+            loot::LootPlugin,
         ))
         .insert_resource(persist::SavePaths::new(&args.save_dir))
         .init_resource::<TickStats>()

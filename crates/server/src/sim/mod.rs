@@ -18,7 +18,7 @@ use deepcore_shared::{
     },
     voxel::{AIR, BlockPos, coords::SURFACE_Y},
 };
-use tracing::{debug, warn};
+use tracing::warn;
 
 use crate::{
     net::SpawnPlayerFor,
@@ -164,7 +164,7 @@ fn spawn_player_on_request(
 }
 
 /// Finds a spawn position above solid ground near the camp.
-fn find_spawn(world: &mut ServerWorld, registry: &ContentRegistry) -> [f32; 3] {
+pub fn find_spawn(world: &mut ServerWorld, registry: &ContentRegistry) -> [f32; 3] {
     // Search downward from just above the surface for the first solid block.
     for x in [0, 4, -4, 8, -8, 12, -12] {
         for z in [0, 4, -4, 8, -8] {
@@ -233,6 +233,40 @@ fn apply_move_inputs(
             &collision,
             deepcore_shared::TICK_SECONDS,
         );
+    }
+}
+
+/// Builds a bare player with the starting pickaxe, used by tests.
+#[cfg(test)]
+#[must_use]
+pub fn test_player(registry: &ContentRegistry) -> ServerPlayer {
+    let balance = &registry.balance;
+    let mut inventory = Inventory::player();
+    if let Some(pickaxe) = registry.item("steel_pickaxe") {
+        inventory.set_slot(0, deepcore_shared::inventory::ItemStack::new(pickaxe, 1));
+    }
+    ServerPlayer {
+        client: Entity::PLACEHOLDER,
+        name: "Tester".to_string(),
+        body: PlayerBody::new([0.5, 1.0, 0.5]),
+        last_seq: 0,
+        inventory,
+        selected: 0,
+        vitals: NetVitals {
+            health: balance.max_health,
+            stamina: balance.max_stamina,
+            oxygen: balance.max_oxygen,
+            heat: 0.0,
+            dose: 0.0,
+            depth: 0,
+        },
+        hazards: deepcore_shared::hazards::HazardState {
+            dose: 0.0,
+            heat: 0.0,
+            oxygen: balance.max_oxygen,
+        },
+        protection: deepcore_shared::hazards::Protection::default(),
+        mining: None,
     }
 }
 
@@ -386,9 +420,14 @@ fn tick_mining(
                     let max = registry.item_def(item).map_or(1, |d| d.stack);
                     let leftover = player.inventory.add(item, count, max);
                     if leftover > 0 {
-                        // No room: the item is dropped in the world. Pickups land with the
-                        // inventory milestone; for now it is reported so it is not silent.
-                        debug!(item = %item_name, leftover, "inventory full, drops lost");
+                        // No room: drop the rest on the ground where the block was.
+                        crate::loot::drop_overflow(
+                            &mut commands,
+                            &registry,
+                            &item_name,
+                            leftover,
+                            pos,
+                        );
                     }
                 }
             }
@@ -408,8 +447,13 @@ fn tick_mining(
     }
 }
 
-/// Advances vitals and hazards once per tick.
-fn tick_vitals(mut players: Query<&mut ServerPlayer>, registry: Res<ContentRegistry>) {
+/// Advances vitals and hazards once per tick, and handles death.
+fn tick_vitals(
+    mut players: Query<&mut ServerPlayer>,
+    registry: Res<ContentRegistry>,
+    mut commands: Commands,
+    mut world: ResMut<ServerWorld>,
+) {
     let dt = deepcore_shared::TICK_SECONDS;
     for mut player in &mut players {
         let depth = SURFACE_Y - player.body.position[1].floor() as i32;
@@ -459,6 +503,11 @@ fn tick_vitals(mut players: Query<&mut ServerPlayer>, registry: Res<ContentRegis
         player.vitals.dose = player.hazards.dose;
         player.vitals.heat = player.hazards.heat;
         player.vitals.oxygen = player.hazards.oxygen;
+
+        // Death: drop the backpack and respawn at the Base.
+        if player.vitals.health <= 0.0 {
+            crate::loot::handle_death(&mut commands, &mut player, &mut world, &registry);
+        }
     }
 }
 
